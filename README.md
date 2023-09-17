@@ -1,104 +1,166 @@
-&nbsp;
-<p align="center">
-  <a href="https://ghost.org/#gh-light-mode-only" target="_blank">
-    <img src="https://user-images.githubusercontent.com/65487235/157884383-1b75feb1-45d8-4430-b636-3f7e06577347.png" alt="Ghost" width="200px">
-  </a>
-  <a href="https://ghost.org/#gh-dark-mode-only" target="_blank">
-    <img src="https://user-images.githubusercontent.com/65487235/157849205-aa24152c-4610-4d7d-b752-3a8c4f9319e6.png" alt="Ghost" width="200px">
-  </a>
-</p>
-&nbsp;
+# Deploying your Ghost Blog on AKS
 
-<p align="center">
-    <a href="https://ghost.org/">Ghost.org</a> •
-    <a href="https://forum.ghost.org">Forum</a> •
-    <a href="https://ghost.org/docs/">Docs</a> •
-    <a href="https://github.com/TryGhost/Ghost/blob/main/.github/CONTRIBUTING.md">Contributing</a> •
-    <a href="https://twitter.com/ghost">Twitter</a>
-    <br /><br />
-    <a href="https://ghost.org/">
-        <img src="https://img.shields.io/badge/downloads-3M-brightgreen.svg" alt="Downloads" />
-    </a>
-    <a href="https://github.com/TryGhost/Ghost/releases/">
-        <img src="https://img.shields.io/github/release/TryGhost/Ghost.svg" alt="Latest release" />
-    </a>
-    <a href="https://github.com/TryGhost/Ghost/actions">
-        <img src="https://github.com/TryGhost/Ghost/workflows/CI/badge.svg?branch=main" alt="Build status" />
-    </a>
-    <a href="https://github.com/TryGhost/Ghost/contributors/">
-        <img src="https://img.shields.io/github/contributors/TryGhost/Ghost.svg" alt="Contributors" />
-    </a>
-</p>
-<p align="center">
-  Love open source? <a href="https://careers.ghost.org">We're hiring</a> JavaScript engineers to work on Ghost full-time.
-</p>
+## STEP 1:
 
-&nbsp;
-
-<a href="https://ghost.org/"><img src="https://user-images.githubusercontent.com/353959/169805900-66be5b89-0859-4816-8da9-528ed7534704.png" alt="Fiercely independent, professional publishing. Ghost is the most popular open source, headless Node.js CMS which already works with all the tools you know and love." /></a>
-
-&nbsp;
-
-<a href="https://ghost.org/pricing/#gh-light-mode-only" target="_blank"><img src="https://user-images.githubusercontent.com/65487235/157849437-9b8fcc48-1920-4b26-a1e8-5806db0e6bb9.png" alt="Ghost(Pro)" width="165px" /></a>
-<a href="https://ghost.org/pricing/#gh-dark-mode-only" target="_blank"><img src="https://user-images.githubusercontent.com/65487235/157849438-79889b04-b7b6-4ba7-8de6-4c1e4b4e16a5.png" alt="Ghost(Pro)" width="165px" /></a>
-
-The easiest way to get a production instance deployed is with our official **[Ghost(Pro)](https://ghost.org/pricing/)** managed service. It takes about 2 minutes to launch a new site with worldwide CDN, backups, security and maintenance all done for you.
-
-For most people this ends up being the best value option because of [how much time it saves](https://ghost.org/docs/hosting/) — and 100% of revenue goes to the Ghost Foundation; funding the maintenance and further development of the project itself. So you’ll be supporting open source software *and* getting a great service!
-
-&nbsp;
-
-# Quickstart install
-
-If you want to run your own instance of Ghost, in most cases the best way is to use our **CLI tool**
-
-```
-npm install ghost-cli -g
+Install ghost (in empty dir) and choose your theme (for eg: casper). Remove other dirs. 
+```bash
+git clone https://github.com/TryGhost/Ghost.git
 ```
 
-&nbsp;
+in the post.hbs, insert this in the `<section class="article-comments gh-canvas">` :
+```html
+        <div id="disqus_thread"></div>
+        <script>
+            var disqus_config = function () {
+                this.page.url = "{{url absolute="true"}}";
+                this.page.identifier = "ghost-{{comment_id}}"
+            };
+            (function() {
+            var d = document, s = d.createElement('script');
+            s.src = 'https://atxlinux.disqus.com/embed.js';
+            s.setAttribute('data-timestamp', +new Date());
+            (d.head || d.body).appendChild(s);
+            })();
+        </script>
+```
 
-Then, if installing locally add the `local` flag to get up and running in under a minute - [Local install docs](https://ghost.org/docs/install/local/)
+## STEP 2
+
+Create a new azure container registry:
+```bash
+ACR_RESOURCE_GROUP=container-rg
+
+ACR_NAME=atxlinux
+
+az group create --name $ACR_RESOURCE_GROUP --location eastus
+
+az acr create --resource-group $ACR_RESOURCE_GROUP --name ACR_NAME --sku Basic --admin-enabled true
+```
+
+## STEP 3:
+
+Create a new image and inject the custom theme, pushing it to your container registry
+`cd content/themes`
+
+- this will not work because content/themes/casper is a symlink, so nothing will get copied
+- use this directory instead: `ghost-test/versions/5.62.0/content/themes`
+
+Create Dockerfile:
+```bash
+cat <<EOF > Dockerfile
+FROM ghost:5.62.0
+# copy themes/config to container
+COPY casper /var/lib/ghost/current/content/themes/casper
+COPY config.production.json /var/lib/ghost/config.production.json
+EOF
+```
+
+Create config.production.json-
+
+```json
+{
+    "url": "http://localhost:2368",
+    "server": {
+        "port": 2368,
+        "host": "0.0.0.0"
+    },
+    "database": {
+        "client": "sqlite3",
+        "connection": {
+            "filename": "/var/lib/ghost/content/data/ghost.db"
+        }
+    },    
+    "logging": {
+        "transports": [
+            "file",
+            "stdout"
+        ]
+    },
+    "process": "systemd",
+    "paths": {
+        "contentPath": "/var/lib/ghost/content"
+    }
+}
 
 ```
-ghost install local
+
+## STEP 4:
+
+### Create an AKS cluster using the main.bicep file. The AKS cluster has AGIC enabled which acts as loadbalancer.
+
+```bash
+
+export AKS_RG_NAME="drs-aks-rg"
+export RG_LOCATION="westeurope"
+export BICEP_FILE="main.bicep"
+export ACR_NAME="drsregistry"
+export AKS_CLUSTER_NAME="DSKube"
+
+# Create the Resource Group to deploy the Webinar Environment
+az group create --name $AKS_RG_NAME --location $RG_LOCATION
+
+# Deploy AKS cluster using bicep template
+az deployment group create \
+  --name bicepk8sdeploy \
+  --resource-group $RG_NAME \
+  --template-file $BICEP_FILE
 ```
 
-&nbsp;
-
-or on a server run the full install, including automatic SSL setup using LetsEncrypt - [Production install docs](https://ghost.org/docs/install/ubuntu/)
-
-```
-ghost install
+## Get credentials
+```bash
+az aks get-credentials -g $AKS_RG_NAME -n $AKS_CLUSTER_NAME
 ```
 
-&nbsp;
 
-Check out our [official documentation](https://ghost.org/docs/) for more information about our [recommended hosting stack](https://ghost.org/docs/hosting/) & properly [upgrading Ghost](https://ghost.org/docs/update/), plus everything you need to develop your own Ghost [themes](https://ghost.org/docs/themes/) or work with [our API](https://ghost.org/docs/content-api/).
+## STEP 5:
 
-### Contributors & advanced developers
+Give the aks cluster ability to pull images from container registry
 
-For anyone wishing to contribute to Ghost or to hack/customize core files we recommend following our full development setup guides: [Contributor guide](https://ghost.org/docs/contributing/) • [Developer setup](https://ghost.org/docs/install/source/)
+```bash
+ACR_ID=$(az acr show -n $ACR_NAME -g $ACR_RESOURCE_GROUP --query "id" --output tsv)
 
-&nbsp;
+MG_ID=$(az identity list -g rg-aks-DSKube --query [].principalId --output tsv)
 
-# Ghost sponsors
+az role assignment create --assignee-object-id $MG_ID --role acrpull --scope $ACR_ID
+```
 
-We'd like to extend big thanks to our sponsors and partners who make Ghost possible. If you're interested in sponsoring Ghost and supporting the project, please check out our profile on [GitHub sponsors](https://github.com/sponsors/TryGhost) :heart:
+## STEP 6:
 
-**[DigitalOcean](https://m.do.co/c/9ff29836d717)** • **[Fastly](https://www.fastly.com/)**
 
-&nbsp;
+```bash
+##Create namespace for app:
+kubectl create ns ghost
+```
 
-# Getting help
+```bash
+##create storage class using storageclass.yml-
+kubectl create -f storageclass.yml
+```
 
-You can find answers to a huge variety of questions, along with a large community of helpful developers over on the [Ghost forum](https://forum.ghost.org/) - replies are generally very quick. **Ghost(Pro)** customers also have access to 24/7 email support.
+```bash
+##create PVC using pvc.yml 
+kubectl create -f pvc.yml
+```
 
-To stay up to date with all the latest news and product updates, make sure you [subscribe to our blog](https://ghost.org/blog/) — or you can always follow us [on Twitter](https://twitter.com/Ghost), if you prefer your updates bite-sized and facetious. :saxophone::turtle:
+```bash
+## create ghost deployment using the newly created image in ACR:
+kubectl apply -f deploy-prod.yml
+```
 
-&nbsp;
+```bash
+## create service for ghost app:
+kubectl apply -f svc.yml
+```
 
-# Copyright & license
+## STEP 7:
 
-Copyright (c) 2013-2023 Ghost Foundation - Released under the [MIT license](LICENSE). Ghost and the Ghost Logo are trademarks of Ghost Foundation Ltd. Please see our [trademark policy](https://ghost.org/trademark/) for info on acceptable usage.
-# ds-ghost
+```bash
+## create ingress:
+kubectl apply -f ingress.yml 
+```
+
+  
+```bash
+kubectl get ing -n ghost
+```
+- add this IP address to the DNS zone as an A record
