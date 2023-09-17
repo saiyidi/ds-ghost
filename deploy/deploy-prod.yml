@@ -1,0 +1,45 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ghost-4-5-0
+  namespace: ghost
+  labels:
+    app: ghost
+    release: 4.5.0
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: ghost
+      release: 4.5.0
+  template:
+    metadata:
+      labels:
+        app: ghost
+        release: 4.5.0
+    spec:
+      volumes:
+        - name: ghost-content
+          persistentVolumeClaim:
+            claimName: ghost-pvc
+      containers:
+        - name: ghost-4-5-0
+          image: drsregistry.azurecr.io/ds-ghost:v1.2
+          env:
+            - name: url
+              value: https://droneshuttles.com
+          volumeMounts:
+            - name: ghost-content
+              mountPath: /var/lib/ghost/content
+          resources:
+            limits:
+              cpu: "1"
+              memory: 256Mi
+            requests:
+              cpu: 100m
+              memory: 64Mi
+          ports:
+            - name: http
+              containerPort: 2368
+              protocol: TCP
+      restartPolicy: Always

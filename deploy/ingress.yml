@@ -1,0 +1,21 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: ingress-ghost
+  namespace: ghost  
+spec:
+  ingressClassName: azure-application-gateway
+  # tls:
+  # - hosts:
+  #   - droneshuttles.com
+  #   secretName:     
+  rules:
+  - http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: ghost
+            port:
+              number: 80

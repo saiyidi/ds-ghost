@@ -1,0 +1,35 @@
+{
+    "url": "http://localhost:2368",
+    "server": {
+        "port": 2368,
+        "host": "0.0.0.0"
+    },
+    "database": {
+        "client": "sqlite3",
+        "connection": {
+            "filename": "/var/lib/ghost/content/data/ghost.db"
+        }
+    },
+    "mail": {
+        "from": "'Israel Saiyid' <israel@droneshuttles.com>",
+        "transport": "SMTP",
+        "options": {
+            "host": "smtp.mailgun.org",
+            "port": 587,
+            "auth": {
+                "user": "postmaster@droneshuttles.com",
+                "pass": "1234"
+            }
+        }
+    },
+    "logging": {
+        "transports": [
+            "file",
+            "stdout"
+        ]
+    },
+    "process": "systemd",
+    "paths": {
+        "contentPath": "/var/lib/ghost/content"
+    }
+}
