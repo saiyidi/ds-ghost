@@ -1,0 +1,19 @@
+apiVersion : apps/v1
+kind: Deployment
+metadata:
+  name: dsghost 
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: dsghost
+  template:
+    metadata:
+      labels:
+        app: dsghost 
+    spec:
+      containers:
+        - name: dsghost 
+          image: drsregistry.azurecr.io/dsghost
+          ports:
+          - containerPort: 8080
